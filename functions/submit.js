@@ -1,65 +1,37 @@
+const express = require('express');
 const { google } = require('googleapis');
+const router = express.Router();
 
-exports.handler = async (event) => {
-  if (event.httpMethod !== 'POST') {
-    return {
-      statusCode: 405,
-      body: JSON.stringify({ error: 'Method Not Allowed' }),
-    };
-  }
+// Load the service account key JSON file
+const serviceAccountKey = require('./credentials.json'); // Replace with your service account key file
 
-  try {
-    const requestBody = JSON.parse(event.body);
-    const { name, enrollment, os } = requestBody;
+// Handle form submissions
+router.post('/submit', async (req, res) => {
+    const { name, enrollment, os } = req.body;
 
-    // Load your Google Sheets API credentials
-    const auth = await authorize();
+    try {
+        // Authenticate with Google Sheets using the service account credentials
+        const auth = await authorize();
 
-    const osLower = os.toLowerCase();
+        const osLower = os.toLowerCase();
 
-    // Check if OS is unique
-    const isUnique = await checkUniqueOS(auth, osLower);
+        // Check if OS is unique
+        const isUnique = await checkUniqueOS(auth, osLower);
 
-    if (!isUnique) {
-      return {
-        statusCode: 400,
-        body: JSON.stringify({ error: 'Operating system is not unique.' }),
-      };
+        if (!isUnique) {
+            res.json({ error: 'Operating system is not unique.' });
+            return;
+        }
+
+        // Add data to Google Sheets
+        await appendToSheet(auth, [name, enrollment, osLower]);
+
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Error:', error);
+        res.status(500).json({ error: 'Server error.' });
     }
-
-    // Add data to Google Sheets
-    await appendToSheet(auth, [name, enrollment, osLower]);
-
-    return {
-      statusCode: 200,
-      body: JSON.stringify({ success: true }),
-    };
-  } catch (error) {
-    console.error('Error:', error);
-    return {
-      statusCode: 500,
-      body: JSON.stringify({ error: 'Server error.' }),
-    };
-  }
-};
-
-async function authorize() {
-  const jwtClient = new google.auth.JWT(
-    serviceAccountKey.client_email,
-    null,
-    serviceAccountKey.private_key,
-    ['https://www.googleapis.com/auth/spreadsheets']
-  );
-
-  try {
-    await jwtClient.authorize();
-    return jwtClient;
-  } catch (err) {
-    console.error('Error authorizing with service account:', err);
-    throw err;
-  }
-}
-
+});
 async function checkUniqueOS(auth, os) {
   // Replace with your Google Sheets document ID and sheet name
   const spreadsheetId = '1Go2YQHRPmf8cni6kINGj_QNc1HXT0VcVYp3Cg5x8Sp4'; // Update with your Spreadsheet ID
